@@ -1,0 +1,292 @@
+# =============================================================================
+# CICS — Cost-Impact Change Signals  |  Bitbucket Pipelines PR Review
+# =============================================================================
+#
+# WHAT THIS DOES
+# --------------
+# Every time a pull request is opened or updated, this pipeline:
+#   1. Runs `terraform plan` on every Terraform root found in the repository.
+#   2. Runs CICS on each plan to detect cost-impacting changes.
+#   3. If anything is found, generates an AI explanation via Claude and posts
+#      the full findings as a comment on the PR — with severity icons,
+#      direction arrows, evidence fields, and expandable AI explanations.
+#   4. If nothing is found, posts a green "all clear" message instead.
+#   5. On follow-up pushes it updates the existing comment rather than
+#      creating a new one, so the PR stays clean.
+#
+#
+# HOW TO USE IN YOUR REPO
+# -----------------------
+# 1. Copy this file to:
+#        your-repo/bitbucket-pipelines.yml
+#
+#    If you already have a bitbucket-pipelines.yml, merge the
+#    "pull-requests" section into your existing file.
+#
+# 2. Add your Anthropic API key as a repository variable:
+#    - Go to your repo on Bitbucket
+#    - Repository settings > Pipelines > Repository variables
+#    - Name:   ANTHROPIC_API_KEY
+#    - Value:  your key from https://console.anthropic.com/
+#    - Check "Secured" to hide it in logs
+#
+#    Without this variable the pipeline still runs but skips AI explanations
+#    and only posts the raw rule findings.
+#
+# 3. Create a Bitbucket App Password so the pipeline can post PR comments:
+#    - Go to your Bitbucket account settings (not the repo):
+#      Account settings > App passwords > Create app password
+#    - Enable these permissions:
+#        Repositories: Read
+#        Pull requests: Read, Write
+#    - Then add two repository variables (Repository settings > Pipelines >
+#      Repository variables):
+#        BB_USER          your Bitbucket username
+#        BB_APP_PASSWORD  the app password you just created (mark Secured)
+#
+#    Without BB_USER and BB_APP_PASSWORD the pipeline cannot post comments.
+#
+# 4. Add cloud provider credentials as repository variables if your
+#    Terraform configuration targets existing infrastructure.
+#
+#    WHY CREDENTIALS MATTER FOR CICS:
+#    CICS detects cost-impacting changes by comparing the "before" and
+#    "after" values in the Terraform plan (e.g., instance_type changed from
+#    t3.micro to m5.large). The "before" values come from your Terraform
+#    state. Without credentials, Terraform cannot reach the remote backend
+#    that holds your state, so "before" is always null — CICS will still
+#    flag new expensive resources being added, but it cannot show what an
+#    existing resource was before the change. For full before-vs-after
+#    change detection, supply credentials so Terraform can read your real
+#    state.
+#
+#    For AWS — add these as repository variables, and remove -backend=false
+#    from the terraform init command below:
+#      AWS_ACCESS_KEY_ID
+#      AWS_SECRET_ACCESS_KEY
+#      AWS_DEFAULT_REGION    (e.g. us-east-1)
+#
+#    For GCP — add this as a repository variable (mark Secured), and remove
+#    -backend=false from the terraform init command below:
+#      GOOGLE_CREDENTIALS    (full service account JSON)
+#
+#    If you are only reviewing brand-new infrastructure (everything is a
+#    fresh create), credentials are not required and the pipeline runs as-is.
+#
+# 5. Commit and push. The pipeline triggers automatically on the next PR.
+#
+#
+# WHAT IS INSTALLED AUTOMATICALLY
+# --------------------------------
+# - Terraform 1.7.5 (downloaded from releases.hashicorp.com)
+# - Python 3.11 (base Docker image)
+# - CICS (via pip install git+https://github.com/usmansadiq786/cics.git)
+#
+# Nothing else needs to be pre-installed on the runner.
+#
+# =============================================================================
+
+image: python:3.11
+
+pipelines:
+  pull-requests:
+    '**':
+      - step:
+          name: Detect cost-impacting Terraform changes
+          script:
+
+            # -----------------------------------------------------------------------
+            - apt-get update -qq && apt-get install -y -qq unzip wget
+            - |
+              wget -q "https://releases.hashicorp.com/terraform/1.7.5/terraform_1.7.5_linux_amd64.zip"
+              unzip -q terraform_1.7.5_linux_amd64.zip -d /usr/local/bin/
+              rm terraform_1.7.5_linux_amd64.zip
+              terraform version
+
+            # -----------------------------------------------------------------------
+            - pip install --quiet git+https://github.com/usmansadiq786/cics.git
+
+            # -----------------------------------------------------------------------
+            - |
+              set -euo pipefail
+
+              FINDINGS_DIR="/tmp/cics_findings"
+              mkdir -p "$FINDINGS_DIR"
+
+              # Find every directory that contains .tf files.
+              # Skips the .terraform provider cache directories automatically.
+              tf_roots=$(find . -name "*.tf" \
+                           -not -path "*/.terraform/*" \
+                           -not -path "*/node_modules/*" \
+                         | xargs -I{} dirname {} | sort -u)
+
+              for tf_dir in $tf_roots; do
+                echo "--- $tf_dir ---"
+                pushd "$tf_dir" > /dev/null
+
+                # Init without a remote backend — avoids needing state credentials.
+                # If your configuration requires a real backend, remove -backend=false.
+                if ! terraform init -backend=false -input=false -no-color 2>&1; then
+                  echo "Init failed — skipping $tf_dir"
+                  popd > /dev/null
+                  continue
+                fi
+
+                # Plan without refreshing live state — safe for PR analysis.
+                if ! terraform plan \
+                       -refresh=false -lock=false -input=false -no-color \
+                       -out=tfplan.bin 2>&1; then
+                  echo "Plan failed — skipping $tf_dir"
+                  popd > /dev/null
+                  continue
+                fi
+
+                terraform show -json tfplan.bin > tfplan.json
+
+                # Run CICS. Add --explain automatically when the API key is present.
+                safe="${tf_dir//\//__}"
+                cics --plan tfplan.json \
+                     --out "$FINDINGS_DIR/${safe}.json" \
+                     ${ANTHROPIC_API_KEY:+--explain} || true
+
+                popd > /dev/null
+              done
+
+              # Merge all per-root JSON files into one combined list.
+              python3 - <<'PYEOF'
+              import json, glob, os
+
+              findings_dir = "/tmp/cics_findings"
+              combined = []
+              for path in glob.glob(f"{findings_dir}/*.json"):
+                  try:
+                      data = json.load(open(path))
+                      if isinstance(data, list):
+                          combined.extend(data)
+                  except Exception:
+                      pass
+
+              json.dump(combined, open(f"{findings_dir}/all.json", "w"), indent=2)
+              print(f"Total findings: {len(combined)}")
+              PYEOF
+
+            # -----------------------------------------------------------------------
+            - |
+              python3 - <<'PYEOF'
+              import json, os
+
+              findings = []
+              try:
+                  findings = json.load(open("/tmp/cics_findings/all.json"))
+              except Exception:
+                  pass
+
+              sev_icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+              dir_label = {
+                  "increase":  "⬆️ increase",
+                  "decrease":  "⬇️ decrease",
+                  "uncertain": "↕️ uncertain",
+              }
+
+              if not findings:
+                  body = (
+                      "## CICS Cost-Impact Review\n\n"
+                      "✅ **No cost-impacting Terraform changes detected.**\n\n"
+                      "_Checked by [CICS](https://github.com/usmansadiq786/cics)_"
+                  )
+              else:
+                  lines = [
+                      "## CICS Cost-Impact Review",
+                      "",
+                      f"**{len(findings)} cost-impacting signal(s) detected** — "
+                      "review before merging.",
+                      "",
+                  ]
+                  for f in findings:
+                      sev  = f.get("severity", "medium")
+                      icon = sev_icon.get(sev, "🟡")
+                      dir_ = dir_label.get(f.get("direction", "uncertain"), "↕️ uncertain")
+                      lines += [
+                          f"### {icon} [{f.get('rule_id')}]  "
+                          f"`{f.get('resource_address')}`",
+                          "| | |",
+                          "|---|---|",
+                          f"| **Category** | {f.get('category')} |",
+                          f"| **Direction** | {dir_} |",
+                          f"| **Severity** | {sev} |",
+                      ]
+                      ev = f.get("evidence", {})
+                      if ev:
+                          ev_str = "  ".join(f"`{k}` -> `{v}`" for k, v in ev.items())
+                          lines.append(f"| **Evidence** | {ev_str} |")
+                      if f.get("explanation"):
+                          lines += [
+                              "",
+                              "<details><summary>💬 AI Explanation</summary>",
+                              "",
+                              f.get("explanation"),
+                              "",
+                              "</details>",
+                          ]
+                      lines.append("")
+                  lines += [
+                      "---",
+                      "_Generated by [CICS](https://github.com/usmansadiq786/cics) "
+                      "— Cost-Impact Change Signals for Terraform_",
+                  ]
+                  body = "\n".join(lines)
+
+              open("/tmp/cics_comment.md", "w").write(body)
+              PYEOF
+
+            # -----------------------------------------------------------------------
+            - |
+              python3 - <<'PYEOF'
+              import json, os, urllib.request, base64
+
+              pr_id = os.environ.get("BITBUCKET_PR_ID", "")
+              repo  = os.environ.get("BITBUCKET_REPO_FULL_NAME", "")
+              user  = os.environ.get("BB_USER", "")
+              token = os.environ.get("BB_APP_PASSWORD", "")
+
+              if not all([pr_id, repo, user, token]):
+                  print("BB_USER or BB_APP_PASSWORD not set — skipping comment post.")
+                  print("Add both as repository variables under Repository settings > "
+                        "Pipelines > Repository variables.")
+                  raise SystemExit(0)
+
+              body   = open("/tmp/cics_comment.md").read()
+              marker = "CICS Cost-Impact Review"
+              creds  = base64.b64encode(f"{user}:{token}".encode()).decode()
+              hdrs   = {
+                  "Authorization": f"Basic {creds}",
+                  "Content-Type":  "application/json",
+              }
+
+              base_url = (f"https://api.bitbucket.org/2.0/repositories"
+                          f"/{repo}/pullrequests/{pr_id}/comments")
+
+              # Check for an existing CICS comment to update rather than duplicate.
+              req = urllib.request.Request(base_url, headers=hdrs)
+              with urllib.request.urlopen(req) as r:
+                  existing = json.loads(r.read())
+
+              existing_id = None
+              for c in existing.get("values", []):
+                  if marker in c.get("content", {}).get("raw", ""):
+                      existing_id = c["id"]
+                      break
+
+              payload = json.dumps({"content": {"raw": body}}).encode()
+
+              if existing_id:
+                  url = f"{base_url}/{existing_id}"
+                  req = urllib.request.Request(url, data=payload, headers=hdrs, method="PUT")
+                  print(f"Updating existing comment {existing_id}.")
+              else:
+                  req = urllib.request.Request(base_url, data=payload, headers=hdrs, method="POST")
+                  print("Creating new comment.")
+
+              with urllib.request.urlopen(req) as r:
+                  print(f"Done. HTTP {r.status}")
+              PYEOF

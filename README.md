@@ -73,10 +73,28 @@ cics --plan plan.json --explain --out findings.json
 
 ---
 
-## GitHub Actions — PR Review
+## CI/CD Integration — PR Review
 
-Copy the example workflow into your own repository to get automatic cost-impact
-comments on every Terraform pull request:
+CICS can post cost-impact findings as a PR comment automatically on every push.
+Two ready-to-use example pipelines are provided in the `examples/` folder —
+one for GitHub Actions and one for Bitbucket Pipelines. Both do the same thing:
+run `terraform plan`, analyse it with CICS, and post a structured comment with
+severity icons, direction arrows, evidence fields, and AI explanations. On
+follow-up pushes the comment is updated in place rather than duplicated.
+
+> **Note on credentials and before-vs-after comparison**
+> CICS compares the `before` and `after` values in the Terraform plan to detect
+> what changed (e.g. `instance_type` t3.micro → m5.large). The `before` values
+> come from your Terraform state. Without cloud credentials, Terraform cannot
+> reach your remote backend, so `before` is always null — CICS will still flag
+> new expensive resources being added, but it will not show what an existing
+> resource looked like before the change. For full change detection on existing
+> infrastructure, supply credentials and remove `-backend=false` from the
+> `terraform init` call inside the pipeline file.
+
+---
+
+### GitHub Actions
 
 ```bash
 # In your repository:
@@ -84,20 +102,41 @@ mkdir -p .github/workflows
 cp examples/cics-pr-review.yml .github/workflows/
 ```
 
-Then add your Anthropic API key as a repository secret:
+Add your Anthropic API key as a repository secret:
 
 1. Go to your repo on GitHub
 2. **Settings > Secrets and variables > Actions > New repository secret**
 3. Name: `ANTHROPIC_API_KEY` — Value: your key from https://console.anthropic.com/
 
-That is all. On the next pull request that touches a `.tf` or `.tfvars` file, the
-workflow will run `terraform plan`, analyse it with CICS, and post a structured
-comment showing any cost-impacting changes with severity icons, direction arrows,
-and AI explanations. On follow-up pushes the comment is updated in place rather
-than duplicated.
-
 See [`examples/cics-pr-review.yml`](examples/cics-pr-review.yml) for the full
-workflow and inline notes on AWS/GCP credential setup.
+workflow with inline notes on AWS/GCP credential setup.
+
+---
+
+### Bitbucket Pipelines
+
+```bash
+# In your repository:
+cp examples/cics-pr-review-bitbucket.yml bitbucket-pipelines.yml
+# (or merge the pull-requests: section into your existing bitbucket-pipelines.yml)
+```
+
+Bitbucket requires an **App Password** to post PR comments (there is no
+auto-provided token like GitHub's `GITHUB_TOKEN`):
+
+1. Go to **Account settings > App passwords > Create app password**
+2. Enable: Repositories: Read — Pull requests: Read, Write
+3. Add two repository variables under **Repository settings > Pipelines >
+   Repository variables**:
+   - `BB_USER` — your Bitbucket username
+   - `BB_APP_PASSWORD` — the app password you just created (mark Secured)
+
+Then add your Anthropic API key the same way:
+
+- `ANTHROPIC_API_KEY` — your key from https://console.anthropic.com/ (mark Secured)
+
+See [`examples/cics-pr-review-bitbucket.yml`](examples/cics-pr-review-bitbucket.yml)
+for the full pipeline with inline notes on AWS/GCP credential setup.
 
 ---
 
@@ -203,9 +242,10 @@ fin-aware/
 ├── eval/
 │   └── evaluate.py       # Precision / Recall / F1 / Direction Accuracy
 ├── examples/
-│   ├── cics-pr-review.yml  # GitHub Actions PR review workflow (copy to your repo)
-│   ├── clone_repos.sh      # Clone/update all 16 sample repos
-│   └── sample_repos.txt    # 16 public Terraform repos used in the study
+│   ├── cics-pr-review.yml            # GitHub Actions PR review workflow (copy to your repo)
+│   ├── cics-pr-review-bitbucket.yml  # Bitbucket Pipelines PR review pipeline (copy to your repo)
+│   ├── clone_repos.sh                # Clone/update all 16 sample repos
+│   └── sample_repos.txt              # 16 public Terraform repos used in the study
 ├── results/
 │   └── eval_results.json # Saved evaluation output
 ├── paper/
