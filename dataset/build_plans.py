@@ -2,6 +2,11 @@
 Generate Terraform plan JSON files from SCENARIOS definitions.
 Each file is a valid `terraform show -json` format document.
 
+The scenarios in scenarios.py were derived from real Terraform module
+repositories listed in examples/sample_repos.txt. To browse the source
+.tf files that each scenario's attribute names and values were taken from:
+    bash examples/clone_repos.sh     # clones all 16 repos into examples/repos/
+
 Usage:
     python dataset/build_plans.py
 """

@@ -175,9 +175,9 @@ def evaluate_rules(rc: dict) -> list:
     is_replace = "replace" in actions or actions == ["delete", "create"]
     is_gcp = rtype.startswith("google_")
 
-    def _emit(rule_id, category, direction, severity, evidence):
+    def _emit(emit_rule_id, category, emit_direction, severity, evidence):
         findings.append(Finding(
-            rule_id=rule_id, category=category, direction=direction,
+            rule_id=emit_rule_id, category=category, direction=emit_direction,
             severity=severity, resource_address=addr, resource_type=rtype,
             actions=list(actions), evidence=evidence,
         ))

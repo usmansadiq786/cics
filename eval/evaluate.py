@@ -82,8 +82,8 @@ def evaluate_tool(scenarios, tool_fn, plan_loader=load_plan):
         pfile = plan_path(s)
         if not pfile.exists():
             continue
-        plan    = plan_loader(pfile)
-        gt      = s["ground_truth"]
+        plan = plan_loader(pfile)
+        gt = s["ground_truth"]
         findings = tool_fn(plan)
         has_finding = len(findings) > 0
         cost_impact = gt["is_cost_impacting"]
@@ -127,15 +127,15 @@ def evaluate_tool(scenarios, tool_fn, plan_loader=load_plan):
         })
 
     precision = tp / (tp + fp) if (tp + fp) > 0 else 1.0
-    recall    = tp / (tp + fn) if (tp + fn) > 0 else 1.0
-    f1        = _f1(precision, recall)
-    dir_acc   = direction_correct / direction_total if direction_total > 0 else 0.0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 1.0
+    f1 = _f1(precision, recall)
+    dir_acc = direction_correct / direction_total if direction_total > 0 else 0.0
 
     return {
         "tp": tp, "fp": fp, "fn": fn, "tn": tn,
         "precision": round(precision * 100, 1),
-        "recall":    round(recall    * 100, 1),
-        "f1":        round(f1        * 100, 1),
+        "recall": round(recall * 100, 1),
+        "f1": round(f1 * 100, 1),
         "direction_accuracy": round(dir_acc * 100, 1),
         "category_stats": dict(category_stats),
         "per_scenario": per_scenario,
@@ -154,9 +154,9 @@ def cics_tool(plan: dict):
 # ------------------------------------------------------------------------------
 
 def print_table(name: str, metrics: dict):
-    print(f"\n{'-'*60}")
+    print(f"\n{'-' * 60}")
     print(f"  {name}")
-    print(f"{'-'*60}")
+    print(f"{'-' * 60}")
     print(f"  TP={metrics['tp']}  FP={metrics['fp']}  "
           f"FN={metrics['fn']}  TN={metrics['tn']}")
     print(f"  Precision  : {metrics['precision']:6.1f}%")
@@ -166,9 +166,9 @@ def print_table(name: str, metrics: dict):
     print()
     if metrics.get("category_stats"):
         print(f"  {'Category':<30} {'TP':>4} {'FP':>4} {'FN':>4}")
-        print(f"  {'-'*43}")
+        print(f"  {'-' * 43}")
         for cat, s in sorted(metrics["category_stats"].items()):
-            print(f"  {cat:<30} {s['tp']:>4} {s.get('fp',0):>4} {s['fn']:>4}")
+            print(f"  {cat:<30} {s['tp']:>4} {s.get('fp', 0):>4} {s['fn']:>4}")
 
 
 def main():
@@ -184,7 +184,7 @@ def main():
 
     print(f"\nEvaluating {len(SCENARIOS)} scenarios …")
 
-    cics_metrics  = evaluate_tool(SCENARIOS, cics_tool)
+    cics_metrics = evaluate_tool(SCENARIOS, cics_tool)
     naive_metrics = evaluate_tool(SCENARIOS, naive_findings)
 
     print_table("CICS (Cost-Impact Change Signals)", cics_metrics)

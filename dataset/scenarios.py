@@ -7,11 +7,42 @@ Each scenario maps to a plan JSON file that build_plans.py writes under
 
 ground_truth fields
 -------------------
-is_cost_impacting : bool   – whether the change has a real cost impact
-direction         : str    – "increase" | "decrease" | "uncertain" | None
-category          : str    – CICS rule category
-expected_rule_ids : list   – which rule IDs should fire
+is_cost_impacting : bool   -- whether the change has a real cost impact
+direction         : str    -- "increase" | "decrease" | "uncertain" | None
+category          : str    -- CICS rule category
+expected_rule_ids : list   -- which rule IDs should fire
+
+repo field
+----------
+The "repo" key in each scenario matches the folder name produced by
+examples/clone_repos.sh (GitHub org/name with "/" replaced by "__").
+SOURCE_REPOS below maps each folder name to its GitHub URL.
+Clone the source repos to browse the real .tf files each scenario was
+derived from:
+    bash examples/clone_repos.sh     # clones into examples/repos/
 """
+
+from pathlib import Path
+
+
+# Maps scenario "repo" folder names to their GitHub source URLs.
+# Built from examples/sample_repos.txt — that file is the single source of
+# truth. Add a repo there and it appears here automatically.
+def _load_source_repos() -> dict:
+    txt = Path(__file__).resolve().parents[1] / "examples" / "sample_repos.txt"
+    result = {}
+    for line in txt.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) >= 2:
+            full_name, url = parts[0], parts[1]
+            result[full_name.replace("/", "__")] = url.removesuffix(".git")
+    return result
+
+
+SOURCE_REPOS = _load_source_repos()
 
 SCENARIOS = [
 
