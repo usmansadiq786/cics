@@ -1,0 +1,307 @@
+# =============================================================================
+# CICS — Cost-Impact Change Signals  |  GitHub Actions PR Review
+# =============================================================================
+#
+# WHAT THIS DOES
+# --------------
+# Every time a pull request is opened or updated, this workflow:
+#   1. Runs `terraform plan` on every Terraform root found in the repository.
+#   2. Runs CICS on each plan to detect cost-impacting changes.
+#   3. If anything is found, generates an AI explanation via Claude and posts
+#      the full findings as a comment on the PR — with severity icons,
+#      direction arrows, evidence fields, and expandable AI explanations.
+#   4. If nothing is found, posts a green "all clear" message instead.
+#   5. On follow-up pushes it updates the existing comment rather than
+#      creating a new one, so the PR stays clean.
+#
+#
+# HOW TO USE IN YOUR REPO
+# -----------------------
+# 1. Copy this file to:
+#        your-repo/.github/workflows/cics-pr-review.yml
+#
+# 2. Add your Anthropic API key as a repository secret:
+#    - Go to your repo on GitHub
+#    - Settings > Secrets and variables > Actions > New repository secret
+#    - Name:   ANTHROPIC_API_KEY
+#    - Value:  your key from https://console.anthropic.com/
+#
+#    Without this secret the workflow still runs but skips AI explanations
+#    and only posts the raw rule findings.
+#
+# 3. Add cloud provider credentials (AWS, GCP, etc.) as repository secrets
+#    and expose them in the "env:" block of the "Generate plans and run CICS"
+#    step below.
+#
+#    WHY CREDENTIALS MATTER FOR CICS:
+#    CICS detects cost-impacting changes by comparing the "before" and "after"
+#    values in the Terraform plan (e.g., instance_type changed from t3.micro
+#    to m5.large). The "before" values come from your Terraform state. Without
+#    credentials, Terraform cannot reach the remote backend that holds your
+#    state, so "before" is always null — CICS will still flag new expensive
+#    resources being added, but it cannot show what an existing resource was
+#    before the change. For full before-vs-after change detection, supply
+#    credentials so Terraform can read your real state.
+#
+#    For AWS (remove -backend=false from the init command if using S3 backend):
+#      AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+#      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#      AWS_DEFAULT_REGION:    us-east-1
+#
+#    For GCP (remove -backend=false from the init command if using GCS backend):
+#      GOOGLE_CREDENTIALS:    ${{ secrets.GOOGLE_CREDENTIALS }}
+#
+#    If you are only reviewing brand-new infrastructure (everything is a
+#    fresh create), credentials are not required and the workflow runs as-is.
+#
+# 4. Commit and push. The workflow triggers automatically on the next PR.
+#
+#
+# WHAT IS INSTALLED AUTOMATICALLY
+# --------------------------------
+# - Terraform (via hashicorp/setup-terraform — no manual install needed)
+# - Python 3.11 (via actions/setup-python)
+# - CICS (via pip install git+https://github.com/usmansadiq786/cics.git)
+#
+# Nothing else needs to be pre-installed on the runner.
+#
+# =============================================================================
+
+name: CICS Cost-Impact Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '**.tf'
+      - '**.tfvars'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  cics-review:
+    name: Detect cost-impacting Terraform changes
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # -----------------------------------------------------------------------
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.x"
+          terraform_wrapper: false
+
+      # -----------------------------------------------------------------------
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # -----------------------------------------------------------------------
+      - name: Install CICS
+        run: pip install --quiet git+https://github.com/usmansadiq786/cics.git
+
+      # -----------------------------------------------------------------------
+      - name: Generate plans and run CICS
+        id: cics
+        run: |
+          set -euo pipefail
+
+          FINDINGS_DIR="$RUNNER_TEMP/cics_findings"
+          mkdir -p "$FINDINGS_DIR"
+
+          # Find every directory that contains .tf files.
+          # Skips the .terraform provider cache directories automatically.
+          tf_roots=$(find . -name "*.tf" \
+                       -not -path "*/.terraform/*" \
+                       -not -path "*/node_modules/*" \
+                     | xargs -I{} dirname {} | sort -u)
+
+          for tf_dir in $tf_roots; do
+            echo "::group::$tf_dir"
+
+            pushd "$tf_dir" > /dev/null
+
+            # Init without a remote backend — avoids needing state credentials.
+            # If your configuration requires a real backend, remove -backend=false.
+            if ! terraform init -backend=false -input=false -no-color 2>&1; then
+              echo "Init failed — skipping $tf_dir"
+              popd > /dev/null
+              echo "::endgroup::"
+              continue
+            fi
+
+            # Plan without refreshing live state — safe for PR analysis.
+            if ! terraform plan \
+                   -refresh=false -lock=false -input=false -no-color \
+                   -out=tfplan.bin 2>&1; then
+              echo "Plan failed — skipping $tf_dir"
+              popd > /dev/null
+              echo "::endgroup::"
+              continue
+            fi
+
+            terraform show -json tfplan.bin > tfplan.json
+
+            # Run CICS. Add --explain automatically when the API key is present.
+            safe="${tf_dir//\//__}"
+            cics --plan tfplan.json \
+                 --out "$FINDINGS_DIR/${safe}.json" \
+                 ${ANTHROPIC_API_KEY:+--explain} || true
+
+            popd > /dev/null
+            echo "::endgroup::"
+          done
+
+          # Merge all per-root JSON files into one combined list.
+          python3 - <<'PYEOF'
+          import json, glob, os
+
+          findings_dir = os.environ["FINDINGS_DIR"]
+          combined = []
+          for path in glob.glob(f"{findings_dir}/*.json"):
+              try:
+                  data = json.load(open(path))
+                  if isinstance(data, list):
+                      combined.extend(data)
+              except Exception:
+                  pass
+
+          out = f"{findings_dir}/all.json"
+          json.dump(combined, open(out, "w"), indent=2)
+          print(f"Total findings: {len(combined)}")
+          PYEOF
+
+          echo "findings=$FINDINGS_DIR/all.json" >> "$GITHUB_OUTPUT"
+        env:
+          FINDINGS_DIR: ${{ runner.temp }}/cics_findings
+          # ----------------------------------------------------------------
+          # Add your cloud provider credentials here as needed. Examples:
+          #
+          # AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          # AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          # AWS_DEFAULT_REGION:    us-east-1
+          #
+          # GOOGLE_CREDENTIALS:    ${{ secrets.GOOGLE_CREDENTIALS }}
+          # ----------------------------------------------------------------
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      # -----------------------------------------------------------------------
+      - name: Build PR comment
+        id: comment
+        run: |
+          python3 - <<'PYEOF'
+          import json, os
+
+          findings_file = "${{ steps.cics.outputs.findings }}"
+          findings = []
+          try:
+              findings = json.load(open(findings_file))
+          except Exception:
+              pass
+
+          sev_icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+          dir_label = {
+              "increase": "⬆️ increase",
+              "decrease": "⬇️ decrease",
+              "uncertain": "↕️ uncertain",
+          }
+
+          if not findings:
+              body = (
+                  "## CICS Cost-Impact Review\n\n"
+                  "✅ **No cost-impacting Terraform changes detected.**\n\n"
+                  "_Checked by [CICS](https://github.com/usmansadiq786/cics)_"
+              )
+          else:
+              lines = [
+                  "## CICS Cost-Impact Review",
+                  "",
+                  f"**{len(findings)} cost-impacting signal(s) detected** — "
+                  "review before merging.",
+                  "",
+              ]
+              for f in findings:
+                  sev  = f.get("severity", "medium")
+                  icon = sev_icon.get(sev, "🟡")
+                  dir_ = dir_label.get(f.get("direction", "uncertain"), "↕️ uncertain")
+                  lines += [
+                      f"### {icon} [{f.get('rule_id')}]  "
+                      f"`{f.get('resource_address')}`",
+                      f"| | |",
+                      f"|---|---|",
+                      f"| **Category** | {f.get('category')} |",
+                      f"| **Direction** | {dir_} |",
+                      f"| **Severity** | {sev} |",
+                  ]
+                  ev = f.get("evidence", {})
+                  if ev:
+                      ev_str = "  ".join(f"`{k}` → `{v}`" for k, v in ev.items())
+                      lines.append(f"| **Evidence** | {ev_str} |")
+                  if f.get("explanation"):
+                      lines += [
+                          "",
+                          "<details><summary>💬 AI Explanation</summary>",
+                          "",
+                          f.get("explanation"),
+                          "",
+                          "</details>",
+                      ]
+                  lines.append("")
+              lines += [
+                  "---",
+                  "_Generated by [CICS](https://github.com/usmansadiq786/cics) "
+                  "— Cost-Impact Change Signals for Terraform_",
+              ]
+              body = "\n".join(lines)
+
+          comment_path = "/tmp/cics_comment.md"
+          open(comment_path, "w").write(body)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as go:
+              go.write(f"file={comment_path}\n")
+          PYEOF
+
+      # -----------------------------------------------------------------------
+      - name: Post or update PR comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs   = require('fs');
+            const body = fs.readFileSync('${{ steps.comment.outputs.file }}', 'utf8');
+            const marker = 'CICS Cost-Impact Review';
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner:        context.repo.owner,
+              repo:         context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            // Update existing CICS comment on re-push; create new one otherwise.
+            const existing = comments.find(
+              c => c.body.includes(marker) && c.user.type === 'Bot'
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner:      context.repo.owner,
+                repo:       context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner:        context.repo.owner,
+                repo:         context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

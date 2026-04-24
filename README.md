@@ -41,10 +41,10 @@ CICS is the artefact accompanying the research paper:
 ### 1. Install
 
 ```bash
-git clone https://github.com/usmansadiq786/cics.git
-cd cics/fin-aware
-pip install -r requirements.txt          # only anthropic>=0.30.0
+pip install git+https://github.com/usmansadiq786/cics.git
 ```
+
+This installs the `cics` command-line tool and all dependencies automatically.
 
 ### 2. Run against your Terraform plan
 
@@ -55,25 +55,49 @@ terraform plan -out=plan.tfplan
 terraform show -json plan.tfplan > plan.json
 
 # Run CICS
-python -c "
-import json, sys
-sys.path.insert(0, '.')
-from cics.extractor import load_plan, extract_resource_changes
-from cics.rules import evaluate_rules
-
-plan = load_plan('plan.json')
-findings = [f for rc in extract_resource_changes(plan) for f in evaluate_rules(rc)]
-for f in findings:
-    print(f.direction.upper(), f.severity, f.category, '-', f.evidence)
-"
+cics --plan plan.json
 ```
 
 ### 3. With AI explanations
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
-python run_all.py --explain
+cics --plan plan.json --explain
 ```
+
+### 4. Save findings to JSON
+
+```bash
+cics --plan plan.json --explain --out findings.json
+```
+
+---
+
+## GitHub Actions — PR Review
+
+Copy the example workflow into your own repository to get automatic cost-impact
+comments on every Terraform pull request:
+
+```bash
+# In your repository:
+mkdir -p .github/workflows
+cp examples/cics-pr-review.yml .github/workflows/
+```
+
+Then add your Anthropic API key as a repository secret:
+
+1. Go to your repo on GitHub
+2. **Settings > Secrets and variables > Actions > New repository secret**
+3. Name: `ANTHROPIC_API_KEY` — Value: your key from https://console.anthropic.com/
+
+That is all. On the next pull request that touches a `.tf` or `.tfvars` file, the
+workflow will run `terraform plan`, analyse it with CICS, and post a structured
+comment showing any cost-impacting changes with severity icons, direction arrows,
+and AI explanations. On follow-up pushes the comment is updated in place rather
+than duplicated.
+
+See [`examples/cics-pr-review.yml`](examples/cics-pr-review.yml) for the full
+workflow and inline notes on AWS/GCP credential setup.
 
 ---
 
@@ -82,7 +106,8 @@ python run_all.py --explain
 Reproduces all results from the paper (Section 5–7) without any cloud account:
 
 ```bash
-cd fin-aware
+git clone https://github.com/usmansadiq786/cics.git
+cd cics/fin-aware
 
 # Build the 35 curated plan JSON files + run evaluation
 python run_all.py
@@ -167,6 +192,7 @@ python dataset/build_plans.py
 ```
 fin-aware/
 ├── cics/
+│   ├── run.py            # CLI entry point (cics command)
 │   ├── rules.py          # 13-rule engine with instance-type scoring
 │   ├── extractor.py      # Terraform plan JSON parser
 │   └── explainer.py      # Evidence-bounded Claude API explainer
@@ -176,11 +202,16 @@ fin-aware/
 │   └── plans/            # 35 plan JSON files (auto-generated)
 ├── eval/
 │   └── evaluate.py       # Precision / Recall / F1 / Direction Accuracy
+├── examples/
+│   ├── cics-pr-review.yml  # GitHub Actions PR review workflow (copy to your repo)
+│   ├── clone_repos.sh      # Clone/update all 16 sample repos
+│   └── sample_repos.txt    # 16 public Terraform repos used in the study
 ├── results/
 │   └── eval_results.json # Saved evaluation output
 ├── paper/
 │   ├── R6_main.tex       # Final research paper (LaTeX, twocolumn)
 │   └── refs.bib          # BibTeX references
+├── pyproject.toml        # Package metadata and CLI entry point
 ├── run_all.py            # One-command pipeline runner
 └── requirements.txt
 ```
