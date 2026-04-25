@@ -128,8 +128,8 @@ auto-provided token like GitHub's `GITHUB_TOKEN`):
 2. Enable: Repositories: Read - Pull requests: Read, Write
 3. Add two repository variables under **Repository settings > Pipelines >
    Repository variables**:
-   - `BB_USER` - your Bitbucket username
-   - `BB_APP_PASSWORD` - the app password you just created (mark Secured)
+    - `BB_USER` - your Bitbucket username
+    - `BB_APP_PASSWORD` - the app password you just created (mark Secured)
 
 Then add your Anthropic API key the same way:
 
