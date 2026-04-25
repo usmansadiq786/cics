@@ -1,4 +1,4 @@
-# CICS: Cost-Impact Change Signals for Terraform
+# CICS /kɪks/ | Cost-Impact Change Signals for Terraform
 
 > **FinOps-Aware IaC Review for DevOps**  
 > Detect and explain cost-impacting Terraform changes at pull-request time - no cloud credentials required beyond what Terraform already uses.
