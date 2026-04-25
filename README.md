@@ -1,7 +1,7 @@
-# CICS — Cost-Impact Change Signals for Terraform
+# CICS: Cost-Impact Change Signals for Terraform
 
 > **FinOps-Aware IaC Review for DevOps**  
-> Detect and explain cost-impacting Terraform changes at pull-request time — no cloud credentials required beyond what Terraform already uses.
+> Detect and explain cost-impacting Terraform changes at pull-request time - no cloud credentials required beyond what Terraform already uses.
 
 ---
 
@@ -10,7 +10,7 @@
 When a developer opens a pull request that upgrades an RDS instance class, raises
 an auto-scaling minimum, or enables Multi-AZ, the cost impact is invisible to
 reviewers. CICS solves this by analysing the **Terraform plan JSON**
-(`terraform show -json`) and emitting structured **cost-impact signals** — each
+(`terraform show -json`) and emitting structured **cost-impact signals** - each
 with a category, direction (increase / decrease / uncertain), severity, and an
 AI-generated natural-language explanation.
 
@@ -18,7 +18,7 @@ CICS is the artefact accompanying the research paper:
 
 > **"FinOps-Aware IaC Review for DevOps: Plan-Aware Detection of Cost-Impacting
 > Terraform Changes with Explainable Feedback"**  
-> Usman Sadiq — NUST EME (MS-SE), 2026
+> Usman Sadiq - NUST EME (MS-SE), 2026
 
 ---
 
@@ -26,10 +26,10 @@ CICS is the artefact accompanying the research paper:
 
 | Feature | Detail |
 |---|---|
-| **Plan-aware** | Reads `terraform show -json` — catches replace-vs-update semantics that `.tf` diffs miss |
+| **Plan-aware** | Reads `terraform show -json` - catches replace-vs-update semantics that `.tf` diffs miss |
 | **13 rules** | Compute sizing, scaling bounds, storage, availability/replication, networking, managed services |
 | **Direction classification** | increase / decrease / uncertain (not just "something changed") |
-| **AI explanations** | Evidence-bounded Claude explanations — no hallucinated prices |
+| **AI explanations** | Evidence-bounded Claude explanations - no hallucinated prices |
 | **Zero false positives** | Tag changes, IAM updates, SG rule edits are correctly ignored |
 | **Provider-agnostic** | AWS and GCP resource types covered out of the box |
 | **CI-ready** | Outputs JSON/JSONL; trivial to post as a PR comment |
@@ -73,10 +73,10 @@ cics --plan plan.json --explain --out findings.json
 
 ---
 
-## CI/CD Integration — PR Review
+## CI/CD Integration - PR Review
 
 CICS can post cost-impact findings as a PR comment automatically on every push.
-Two ready-to-use example pipelines are provided in the `examples/` folder —
+Two ready-to-use example pipelines are provided in the `examples/` folder -
 one for GitHub Actions and one for Bitbucket Pipelines. Both do the same thing:
 run `terraform plan`, analyse it with CICS, and post a structured comment with
 severity icons, direction arrows, evidence fields, and AI explanations. On
@@ -86,7 +86,7 @@ follow-up pushes the comment is updated in place rather than duplicated.
 > CICS compares the `before` and `after` values in the Terraform plan to detect
 > what changed (e.g. `instance_type` t3.micro → m5.large). The `before` values
 > come from your Terraform state. Without cloud credentials, Terraform cannot
-> reach your remote backend, so `before` is always null — CICS will still flag
+> reach your remote backend, so `before` is always null - CICS will still flag
 > new expensive resources being added, but it will not show what an existing
 > resource looked like before the change. For full change detection on existing
 > infrastructure, supply credentials and remove `-backend=false` from the
@@ -106,7 +106,7 @@ Add your Anthropic API key as a repository secret:
 
 1. Go to your repo on GitHub
 2. **Settings > Secrets and variables > Actions > New repository secret**
-3. Name: `ANTHROPIC_API_KEY` — Value: your key from https://console.anthropic.com/
+3. Name: `ANTHROPIC_API_KEY` - Value: your key from https://console.anthropic.com/
 
 See [`examples/cics-pr-review.yml`](examples/cics-pr-review.yml) for the full
 workflow with inline notes on AWS/GCP credential setup.
@@ -125,15 +125,15 @@ Bitbucket requires an **App Password** to post PR comments (there is no
 auto-provided token like GitHub's `GITHUB_TOKEN`):
 
 1. Go to **Account settings > App passwords > Create app password**
-2. Enable: Repositories: Read — Pull requests: Read, Write
+2. Enable: Repositories: Read - Pull requests: Read, Write
 3. Add two repository variables under **Repository settings > Pipelines >
    Repository variables**:
-   - `BB_USER` — your Bitbucket username
-   - `BB_APP_PASSWORD` — the app password you just created (mark Secured)
+   - `BB_USER` - your Bitbucket username
+   - `BB_APP_PASSWORD` - the app password you just created (mark Secured)
 
 Then add your Anthropic API key the same way:
 
-- `ANTHROPIC_API_KEY` — your key from https://console.anthropic.com/ (mark Secured)
+- `ANTHROPIC_API_KEY` - your key from https://console.anthropic.com/ (mark Secured)
 
 See [`examples/cics-pr-review-bitbucket.yml`](examples/cics-pr-review-bitbucket.yml)
 for the full pipeline with inline notes on AWS/GCP credential setup.
@@ -152,8 +152,8 @@ cd cics/fin-aware
 python run_all.py
 
 # Output (actual results):
-# CICS   — Precision: 100.0%  Recall: 100.0%  F1: 100.0%  Dir. Acc: 100.0%
-# Naive  — Precision:  85.7%  Recall: 100.0%  F1:  92.3%  Dir. Acc:  23.3%
+# CICS   - Precision: 100.0%  Recall: 100.0%  F1: 100.0%  Dir. Acc: 100.0%
+# Naive  - Precision:  85.7%  Recall: 100.0%  F1:  92.3%  Dir. Acc:  23.3%
 ```
 
 Results are saved to `results/eval_results.json`.
@@ -162,7 +162,7 @@ Results are saved to `results/eval_results.json`.
 
 ## Dataset
 
-The evaluation dataset lives in `dataset/plans/` — 35 Terraform plan JSON files
+The evaluation dataset lives in `dataset/plans/` - 35 Terraform plan JSON files
 organised by source repository and example:
 
 ```
@@ -191,7 +191,7 @@ dataset/plans/
 
 **Scenarios:** 30 cost-impacting + 5 non-cost-impacting (FP tests)  
 **Source repos:** 16 (10 AWS, 6 GCP)  
-**No cloud credentials needed** — all plan JSONs are synthetically generated from
+**No cloud credentials needed** - all plan JSONs are synthetically generated from
 real resource types and attribute names; see `dataset/scenarios.py` for all
 definitions and ground-truth labels.
 
@@ -276,7 +276,7 @@ If you use CICS or this dataset in your research, please cite:
 
 ## License
 
-This project is released under the **MIT License** — see [LICENSE](LICENSE) for
+This project is released under the **MIT License** - see [LICENSE](LICENSE) for
 details. You are free to use, modify, and distribute CICS in academic or
 commercial contexts. Attribution is appreciated but not required.
 

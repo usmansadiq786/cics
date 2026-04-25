@@ -26,7 +26,7 @@ from pathlib import Path
 
 
 # Maps scenario "repo" folder names to their GitHub source URLs.
-# Built from examples/sample_repos.txt — that file is the single source of
+# Built from examples/sample_repos.txt - that file is the single source of
 # truth. Add a repo there and it appears here automatically.
 def _load_source_repos() -> dict:
     txt = Path(__file__).resolve().parents[1] / "examples" / "sample_repos.txt"
