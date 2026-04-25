@@ -59,7 +59,7 @@ def step_explain(results_path: str, n_samples: int = 15):
     save_explanations = Path(results_path).parent / "explanations.json"
     explained = explain_findings_bulk(findings_to_explain,
                                       save_path=str(save_explanations))
-    print(f"  Generated {len(explained)} explanations → {save_explanations}")
+    print(f"  Generated {len(explained)} explanations -> {save_explanations}")
 
 
 def main():

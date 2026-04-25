@@ -84,7 +84,7 @@ follow-up pushes the comment is updated in place rather than duplicated.
 
 > **Note on credentials and before-vs-after comparison**
 > CICS compares the `before` and `after` values in the Terraform plan to detect
-> what changed (e.g. `instance_type` t3.micro → m5.large). The `before` values
+> what changed (e.g. `instance_type` t3.micro -> m5.large). The `before` values
 > come from your Terraform state. Without cloud credentials, Terraform cannot
 > reach your remote backend, so `before` is always null - CICS will still flag
 > new expensive resources being added, but it will not show what an existing
@@ -168,7 +168,7 @@ organised by source repository and example:
 ```
 dataset/plans/
 ├── terraform-aws-modules__terraform-aws-ec2-instance/
-│   ├── complete/            S001 (t3.micro→m5.large), S002 (downsize), …
+│   ├── complete/            S001 (t3.micro->m5.large), S002 (downsize), …
 │   └── session-manager/     S003 (launch template upsize)
 ├── terraform-aws-modules__terraform-aws-rds/
 │   ├── complete-postgres/   S004, S013, S018, S019, S020, S028, S029

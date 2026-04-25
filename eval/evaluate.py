@@ -26,10 +26,10 @@ from dataset.build_plans import plan_path
 def naive_findings(plan: dict) -> list:
     """
     Naive heuristic: flag every resource change.
-    - create  → increase/high
-    - replace → increase/high
-    - update  → uncertain/medium
-    - delete  → decrease/medium
+    - create  -> increase/high
+    - replace -> increase/high
+    - update  -> uncertain/medium
+    - delete  -> decrease/medium
     """
     results = []
     for rc in extract_resource_changes(plan):
@@ -198,7 +198,7 @@ def main():
                    indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
-    print(f"\nResults saved → {out_path}")
+    print(f"\nResults saved -> {out_path}")
 
 
 if __name__ == "__main__":

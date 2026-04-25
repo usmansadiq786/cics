@@ -53,7 +53,7 @@ SCENARIOS = [
         "id": "S001",
         "repo": "terraform-aws-modules__terraform-aws-ec2-instance",
         "example": "complete",
-        "description": "EC2 instance_type upsize: t3.micro → m5.large",
+        "description": "EC2 instance_type upsize: t3.micro -> m5.large",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "increase",
@@ -76,7 +76,7 @@ SCENARIOS = [
         "id": "S002",
         "repo": "terraform-aws-modules__terraform-aws-ec2-instance",
         "example": "complete",
-        "description": "EC2 instance_type downsize: m5.xlarge → t3.small",
+        "description": "EC2 instance_type downsize: m5.xlarge -> t3.small",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "decrease",
@@ -97,7 +97,7 @@ SCENARIOS = [
         "id": "S003",
         "repo": "terraform-aws-modules__terraform-aws-ec2-instance",
         "example": "session-manager",
-        "description": "EC2 launch template instance_type upsize: t3.medium → m5.2xlarge",
+        "description": "EC2 launch template instance_type upsize: t3.medium -> m5.2xlarge",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "increase",
@@ -118,7 +118,7 @@ SCENARIOS = [
         "id": "S004",
         "repo": "terraform-aws-modules__terraform-aws-rds",
         "example": "complete-postgres",
-        "description": "RDS instance_class upsize: db.t4g.large → db.r5.4xlarge",
+        "description": "RDS instance_class upsize: db.t4g.large -> db.r5.4xlarge",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "increase",
@@ -141,7 +141,7 @@ SCENARIOS = [
         "id": "S005",
         "repo": "terraform-aws-modules__terraform-aws-rds",
         "example": "replica-postgres",
-        "description": "RDS instance_class downsize: db.r5.large → db.t4g.micro",
+        "description": "RDS instance_class downsize: db.r5.large -> db.t4g.micro",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "decrease",
@@ -162,7 +162,7 @@ SCENARIOS = [
         "id": "S006",
         "repo": "terraform-aws-modules__terraform-aws-ec2-instance",
         "example": "complete",
-        "description": "EC2 same-family scale-up: c5.large → c5.4xlarge",
+        "description": "EC2 same-family scale-up: c5.large -> c5.4xlarge",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "increase",
@@ -187,7 +187,7 @@ SCENARIOS = [
         "id": "S007",
         "repo": "terraform-aws-modules__terraform-aws-autoscaling",
         "example": "complete",
-        "description": "ASG min_size increase: 1 → 3",
+        "description": "ASG min_size increase: 1 -> 3",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "increase",
@@ -208,7 +208,7 @@ SCENARIOS = [
         "id": "S008",
         "repo": "terraform-aws-modules__terraform-aws-autoscaling",
         "example": "complete",
-        "description": "ASG max_size increase: 5 → 20",
+        "description": "ASG max_size increase: 5 -> 20",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "increase",
@@ -229,7 +229,7 @@ SCENARIOS = [
         "id": "S009",
         "repo": "terraform-aws-modules__terraform-aws-autoscaling",
         "example": "complete",
-        "description": "ASG scaling bounds decrease: min 5→1, max 10→3",
+        "description": "ASG scaling bounds decrease: min 5->1, max 10->3",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "decrease",
@@ -250,7 +250,7 @@ SCENARIOS = [
         "id": "S010",
         "repo": "terraform-aws-modules__terraform-aws-eks",
         "example": "eks-managed-node-group",
-        "description": "App autoscaling min_capacity increase: 1 → 4",
+        "description": "App autoscaling min_capacity increase: 1 -> 4",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "increase",
@@ -271,7 +271,7 @@ SCENARIOS = [
         "id": "S011",
         "repo": "terraform-aws-modules__terraform-aws-eks",
         "example": "eks-managed-node-group",
-        "description": "App autoscaling max_capacity increase: 10 → 50",
+        "description": "App autoscaling max_capacity increase: 10 -> 50",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "increase",
@@ -292,7 +292,7 @@ SCENARIOS = [
         "id": "S012",
         "repo": "terraform-aws-modules__terraform-aws-eks",
         "example": "eks-managed-node-group",
-        "description": "App autoscaling min/max decrease: 5/20 → 1/5",
+        "description": "App autoscaling min/max decrease: 5/20 -> 1/5",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "decrease",
@@ -317,7 +317,7 @@ SCENARIOS = [
         "id": "S013",
         "repo": "terraform-aws-modules__terraform-aws-rds",
         "example": "complete-postgres",
-        "description": "RDS allocated_storage increase: 20 GB → 200 GB",
+        "description": "RDS allocated_storage increase: 20 GB -> 200 GB",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "increase",
@@ -338,7 +338,7 @@ SCENARIOS = [
         "id": "S014",
         "repo": "terraform-aws-modules__terraform-aws-rds",
         "example": "replica-postgres",
-        "description": "RDS allocated_storage decrease: 100 GB → 50 GB",
+        "description": "RDS allocated_storage decrease: 100 GB -> 50 GB",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "decrease",
@@ -359,7 +359,7 @@ SCENARIOS = [
         "id": "S015",
         "repo": "terraform-aws-modules__terraform-aws-ec2-instance",
         "example": "complete",
-        "description": "EBS volume_size increase: 50 GB → 200 GB",
+        "description": "EBS volume_size increase: 50 GB -> 200 GB",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "increase",
@@ -380,7 +380,7 @@ SCENARIOS = [
         "id": "S016",
         "repo": "terraform-google-modules__terraform-google-sql-db",
         "example": "postgresql-ha",
-        "description": "GCP SQL disk_size increase: 10 GB → 100 GB",
+        "description": "GCP SQL disk_size increase: 10 GB -> 100 GB",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "increase",
@@ -401,7 +401,7 @@ SCENARIOS = [
         "id": "S017",
         "repo": "terraform-aws-modules__terraform-aws-ec2-instance",
         "example": "complete",
-        "description": "EBS volume_type tier upgrade: gp2 → io1",
+        "description": "EBS volume_type tier upgrade: gp2 -> io1",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "increase",
@@ -422,7 +422,7 @@ SCENARIOS = [
         "id": "S018",
         "repo": "terraform-aws-modules__terraform-aws-rds",
         "example": "complete-postgres",
-        "description": "RDS storage_type upgrade: gp2 → io1",
+        "description": "RDS storage_type upgrade: gp2 -> io1",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "increase",
@@ -447,7 +447,7 @@ SCENARIOS = [
         "id": "S019",
         "repo": "terraform-aws-modules__terraform-aws-rds",
         "example": "complete-postgres",
-        "description": "RDS multi_az enable: false → true",
+        "description": "RDS multi_az enable: false -> true",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "increase",
@@ -468,7 +468,7 @@ SCENARIOS = [
         "id": "S020",
         "repo": "terraform-aws-modules__terraform-aws-rds",
         "example": "complete-postgres",
-        "description": "RDS multi_az disable: true → false",
+        "description": "RDS multi_az disable: true -> false",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "decrease",
@@ -489,7 +489,7 @@ SCENARIOS = [
         "id": "S021",
         "repo": "terraform-aws-modules__terraform-aws-rds",
         "example": "cross-region-replica-postgres",
-        "description": "RDS Aurora replica_count increase: 1 → 3",
+        "description": "RDS Aurora replica_count increase: 1 -> 3",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "increase",
@@ -510,7 +510,7 @@ SCENARIOS = [
         "id": "S022",
         "repo": "terraform-google-modules__terraform-google-sql-db",
         "example": "postgresql-ha",
-        "description": "GCP SQL availability_type: ZONAL → REGIONAL",
+        "description": "GCP SQL availability_type: ZONAL -> REGIONAL",
         "ground_truth": {
             "is_cost_impacting": True,
             "direction": "increase",
