@@ -27,7 +27,7 @@ CICS is the artefact accompanying the research paper:
 | Feature | Detail |
 |---|---|
 | **Plan-aware** | Reads `terraform show -json` - catches replace-vs-update semantics that `.tf` diffs miss |
-| **13 rules** | Compute sizing, scaling bounds, storage, availability/replication, networking, managed services |
+| **14 rules** | Compute sizing, scaling bounds, storage, availability/replication, networking, managed services |
 | **Direction classification** | increase / decrease / uncertain (not just "something changed") |
 | **AI explanations** | Evidence-bounded Claude explanations - no hallucinated prices |
 | **Zero false positives** | Tag changes, IAM updates, SG rule edits are correctly ignored |
@@ -142,13 +142,20 @@ for the full pipeline with inline notes on AWS/GCP credential setup.
 
 ## Running the Research Evaluation
 
-Reproduces all results from the paper (Section 5–7) without any cloud account:
+Reproduces all results from the paper (Section 5–7). Terraform must be installed
+(`terraform version`) but no cloud credentials are required.
 
 ```bash
 git clone https://github.com/usmansadiq786/cics.git
 cd cics/fin-aware
 
-# Build the 35 curated plan JSON files + run evaluation
+# Step 1 — clone the 16 source Terraform repos
+bash examples/clone_repos.sh
+
+# Step 2 — pick real examples, run terraform plan -refresh=false, save base plans
+python dataset/select_examples.py
+
+# Step 3 — build evaluation plan JSONs from the base plans and run evaluation
 python run_all.py
 
 # Output (actual results):
@@ -162,40 +169,26 @@ Results are saved to `results/eval_results.json`.
 
 ## Dataset
 
-The evaluation dataset lives in `dataset/plans/` - 35 Terraform plan JSON files
-organised by source repository and example:
+The evaluation dataset is generated automatically from 16 real public Terraform
+module repositories. The pipeline works as follows:
 
-```
-dataset/plans/
-├── terraform-aws-modules__terraform-aws-ec2-instance/
-│   ├── complete/            S001 (t3.micro->m5.large), S002 (downsize), …
-│   └── session-manager/     S003 (launch template upsize)
-├── terraform-aws-modules__terraform-aws-rds/
-│   ├── complete-postgres/   S004, S013, S018, S019, S020, S028, S029
-│   ├── replica-postgres/    S005, S014
-│   ├── complete-mysql/      S027
-│   └── cross-region-…/      S021
-├── terraform-aws-modules__terraform-aws-autoscaling/
-│   └── complete/            S007, S008, S009
-├── terraform-aws-modules__terraform-aws-alb/
-│   ├── complete-alb/        S024, S030
-│   └── complete-nlb/        S025
-├── terraform-aws-modules__terraform-aws-vpc/
-│   └── complete-vpc/        S023
-├── terraform-aws-modules__terraform-aws-eks/
-│   └── eks-managed-node-group/  S010, S011, S012
-├── terraform-google-modules__terraform-google-sql-db/
-│   └── postgresql-ha/       S016, S022
-└── … (S031–S035 are false-positive test cases)
-```
+1. **`examples/clone_repos.sh`** — clones repos into `examples/repos/`
+2. **`dataset/select_examples.py`** — picks the most cost-relevant examples per
+   repo, fills missing Terraform variables with sensible defaults, runs
+   `terraform plan -refresh=false`, and saves base plan JSONs to
+   `dataset/plans/base/<repo>/<example>/base.json`
+3. **`dataset/scenarios.py`** — reads the base plans and generates evaluation
+   scenarios dynamically: one cost-impacting scenario per cost-relevant resource
+   type found, one false-positive (tags-only) scenario per plan
+4. **`dataset/build_plans.py`** — writes the final per-scenario plan JSON files
+   consumed by the evaluator
 
-**Scenarios:** 30 cost-impacting + 5 non-cost-impacting (FP tests)  
-**Source repos:** 16 (10 AWS, 6 GCP)  
-**No cloud credentials needed** - all plan JSONs are synthetically generated from
-real resource types and attribute names; see `dataset/scenarios.py` for all
-definitions and ground-truth labels.
+**Scenarios:** ~30 cost-impacting + ~5 non-cost-impacting (FP tests)  
+**Source repos:** 16 (10 AWS, 6 GCP) — see `examples/sample_repos.txt`  
+**No live cloud credentials needed** — `terraform plan -refresh=false -backend=false`
+runs entirely offline against real module code.
 
-To regenerate the plan JSON files from scratch:
+To rebuild the plan JSON files after changing scenarios or templates:
 
 ```bash
 python dataset/build_plans.py
@@ -236,9 +229,10 @@ fin-aware/
 │   ├── extractor.py      # Terraform plan JSON parser
 │   └── explainer.py      # Evidence-bounded Claude API explainer
 ├── dataset/
-│   ├── scenarios.py      # All 35 scenario definitions + ground truth
-│   ├── build_plans.py    # Generates plan JSON files from scenarios
-│   └── plans/            # 35 plan JSON files (auto-generated)
+│   ├── scenarios.py      # Dynamically generates scenarios from base plans
+│   ├── select_examples.py# Runs terraform plan on real repos, saves base plans
+│   ├── build_plans.py    # Generates per-scenario plan JSON files
+│   └── plans/            # Plan JSON files (auto-generated)
 ├── eval/
 │   └── evaluate.py       # Precision / Recall / F1 / Direction Accuracy
 ├── examples/

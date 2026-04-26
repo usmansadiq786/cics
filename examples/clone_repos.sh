@@ -5,7 +5,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPOS_DIR="$SCRIPT_DIR/../repos"
+REPOS_DIR="$SCRIPT_DIR/repos"
 REPOS_FILE="$SCRIPT_DIR/sample_repos.txt"
 
 mkdir -p "$REPOS_DIR"

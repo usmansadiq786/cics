@@ -20,6 +20,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
 def step_build():
+    base_dir = Path(__file__).resolve().parent / "dataset" / "plans" / "base"
+    if not base_dir.exists() or not any(base_dir.rglob("base.json")):
+        print(
+            "\n[!] dataset/plans/base/ is empty.\n"
+            "    Run the following first:\n"
+            "        bash examples/clone_repos.sh\n"
+            "        python dataset/select_examples.py\n"
+        )
+        sys.exit(1)
     from dataset.build_plans import build_all
     print("\n[1/3] Building plan JSON dataset …")
     build_all()
