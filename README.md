@@ -41,7 +41,7 @@ CICS is the artefact accompanying the research paper:
 ### 1. Install
 
 ```bash
-pip install cics
+pip install cics-terraform
 ```
 
 This installs the `cics` command-line tool and all dependencies automatically.

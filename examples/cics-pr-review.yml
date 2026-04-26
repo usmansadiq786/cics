@@ -61,7 +61,7 @@
 # --------------------------------
 # - Terraform (via hashicorp/setup-terraform - no manual install needed)
 # - Python 3.11 (via actions/setup-python)
-# - CICS (via pip install cics)
+# - CICS (via pip install cics-terraform)
 #
 # Nothing else needs to be pre-installed on the runner.
 #
@@ -106,7 +106,7 @@ jobs:
 
       # -----------------------------------------------------------------------
       - name: Install CICS
-        run: pip install --quiet cics
+        run: pip install --quiet cics-terraform
 
       # -----------------------------------------------------------------------
       - name: Generate plans and run CICS

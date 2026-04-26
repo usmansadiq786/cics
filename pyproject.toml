@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cics"
+name = "cics-terraform"
 version = "1.0.1"
 description = "Cost-Impact Change Signals: plan-aware detection of cost-impacting Terraform changes"
 readme = "README.md"
