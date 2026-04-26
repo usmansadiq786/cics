@@ -80,7 +80,7 @@
 # --------------------------------
 # - Terraform 1.7.5 (downloaded from releases.hashicorp.com)
 # - Python 3.11 (base Docker image)
-# - CICS (via pip install git+https://github.com/usmansadiq786/cics.git)
+# - CICS (via pip install cics)
 #
 # Nothing else needs to be pre-installed on the runner.
 #
@@ -104,7 +104,7 @@ pipelines:
               terraform version
 
             # -----------------------------------------------------------------------
-            - pip install --quiet git+https://github.com/usmansadiq786/cics.git
+            - pip install --quiet cics
 
             # -----------------------------------------------------------------------
             - |

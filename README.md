@@ -41,7 +41,7 @@ CICS is the artefact accompanying the research paper:
 ### 1. Install
 
 ```bash
-pip install git+https://github.com/usmansadiq786/cics.git
+pip install cics
 ```
 
 This installs the `cics` command-line tool and all dependencies automatically.
