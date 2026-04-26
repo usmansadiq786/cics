@@ -1,5 +1,5 @@
 """
-CICS Rule Engine – all 13 rules from the R4 catalog.
+CICS Rule Engine – all 14 rules from the R4 catalog.
 Each rule emits a Finding with: rule_id, category, direction, severity, evidence.
 """
 
