@@ -30,7 +30,7 @@ CICS is the artefact accompanying the research paper:
 | **14 rules** | Compute sizing, scaling bounds, storage, availability/replication, networking, managed services |
 | **Direction classification** | increase / decrease / uncertain (not just "something changed") |
 | **AI explanations** | Evidence-bounded Claude explanations - no hallucinated prices |
-| **Zero false positives** | Tag changes, IAM updates, SG rule edits are correctly ignored |
+| **Near-zero false positives** | Tag changes, IAM updates, ACL edits ignored; 2 edge-case FPs on 65-scenario eval |
 | **Provider-agnostic** | AWS and GCP resource types covered out of the box |
 | **CI-ready** | Outputs JSON/JSONL; trivial to post as a PR comment |
 
@@ -143,7 +143,8 @@ for the full pipeline with inline notes on AWS/GCP credential setup.
 ## Running the Research Evaluation
 
 Reproduces all results from the paper (Section 5–7). Terraform must be installed
-(`terraform version`) but no cloud credentials are required.
+(`terraform version`). Step 2 (`gen_base_plans.sh`) may require AWS or GCP
+credentials for modules that include data sources; all other steps are credential-free.
 
 ```bash
 git clone https://github.com/usmansadiq786/cics.git
@@ -152,15 +153,15 @@ cd cics/fin-aware
 # Step 1 — clone the 16 source Terraform repos
 bash examples/clone_repos.sh
 
-# Step 2 — pick real examples, run terraform plan -refresh=false, save base plans
-python dataset/select_examples.py
+# Step 2 — run terraform plan on every example folder, save base plans
+bash examples/gen_base_plans.sh
 
 # Step 3 — build evaluation plan JSONs from the base plans and run evaluation
 python run_all.py
 
 # Output (actual results):
-# CICS   - Precision: 100.0%  Recall: 100.0%  F1: 100.0%  Dir. Acc: 100.0%
-# Naive  - Precision:  85.7%  Recall: 100.0%  F1:  92.3%  Dir. Acc:  23.3%
+# CICS   - Precision:  91.7%  Recall:  91.7%  F1:  91.7%  Dir. Acc: 100.0%
+# Naive  - Precision:  36.9%  Recall: 100.0%  F1:  53.9%  Dir. Acc:  50.0%
 ```
 
 Results are saved to `results/eval_results.json`.
@@ -173,8 +174,8 @@ The evaluation dataset is generated automatically from 16 real public Terraform
 module repositories. The pipeline works as follows:
 
 1. **`examples/clone_repos.sh`** — clones repos into `examples/repos/`
-2. **`dataset/select_examples.py`** — picks the most cost-relevant examples per
-   repo, fills missing Terraform variables with sensible defaults, runs
+2. **`examples/gen_base_plans.sh`** — walks every repo's `examples/` sub-folders,
+   fills missing Terraform variables with sensible defaults, runs
    `terraform plan -refresh=false`, and saves base plan JSONs to
    `dataset/plans/base/<repo>/<example>/base.json`
 3. **`dataset/scenarios.py`** — reads the base plans and generates evaluation
@@ -183,10 +184,11 @@ module repositories. The pipeline works as follows:
 4. **`dataset/build_plans.py`** — writes the final per-scenario plan JSON files
    consumed by the evaluator
 
-**Scenarios:** ~30 cost-impacting + ~5 non-cost-impacting (FP tests)  
+**Scenarios:** 24 cost-impacting + 41 non-cost-impacting (39 TN + 2 edge-case FP tests)  
 **Source repos:** 16 (10 AWS, 6 GCP) — see `examples/sample_repos.txt`  
-**No live cloud credentials needed** — `terraform plan -refresh=false -backend=false`
-runs entirely offline against real module code.
+**Note on credentials** — `gen_base_plans.sh` runs `terraform plan -refresh=false`;
+modules with data sources may require AWS/GCP credentials. `run_all.py` and all
+downstream evaluation steps are fully credential-free once base plans exist.
 
 To rebuild the plan JSON files after changing scenarios or templates:
 
@@ -225,17 +227,17 @@ python dataset/build_plans.py
 fin-aware/
 ├── cics/
 │   ├── run.py            # CLI entry point (cics command)
-│   ├── rules.py          # 13-rule engine with instance-type scoring
+│   ├── rules.py          # 14-rule engine with instance-type scoring
 │   ├── extractor.py      # Terraform plan JSON parser
 │   └── explainer.py      # Evidence-bounded Claude API explainer
 ├── dataset/
 │   ├── scenarios.py      # Dynamically generates scenarios from base plans
-│   ├── select_examples.py# Runs terraform plan on real repos, saves base plans
 │   ├── build_plans.py    # Generates per-scenario plan JSON files
 │   └── plans/            # Plan JSON files (auto-generated)
 ├── eval/
 │   └── evaluate.py       # Precision / Recall / F1 / Direction Accuracy
 ├── examples/
+│   ├── gen_base_plans.sh             # Run terraform plan on all example folders, save base plans
 │   ├── cics-pr-review.yml            # GitHub Actions PR review workflow (copy to your repo)
 │   ├── cics-pr-review-bitbucket.yml  # Bitbucket Pipelines PR review pipeline (copy to your repo)
 │   ├── clone_repos.sh                # Clone/update all 16 sample repos

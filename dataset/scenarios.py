@@ -1,7 +1,7 @@
 """
 Dynamically generates CICS evaluation scenarios from real Terraform base plans.
 
-Base plans are produced by dataset/select_examples.py and stored under
+Base plans are produced by examples/gen_base_plans.sh and stored under
 dataset/plans/base/<repo>/<example>/base.json.
 
 For each plan:
@@ -10,7 +10,7 @@ For each plan:
   - One false-positive scenario per plan (tags-only change on a non-cost resource)
 
 If dataset/plans/base/ does not exist, run:
-    python dataset/select_examples.py
+    bash examples/gen_base_plans.sh
 
 repo field
 ----------
@@ -326,141 +326,251 @@ CHANGE_TEMPLATES: dict[str, list[dict]] = {
 
 
 # ---------------------------------------------------------------------------
+# Edge-case scenarios (static) — always included regardless of base plans.
+# These expose known rule-engine gaps and produce realistic FN/FP results.
+# FN = cost-impacting scenarios CICS currently misses (nested attrs / uncovered fields)
+# FP = non-cost scenarios CICS incorrectly fires on (drift / below-threshold changes)
+# ---------------------------------------------------------------------------
+
+_EDGE_CASE_SCENARIOS = [
+    # FN-1: GKE node pool machine_type nested inside node_config list
+    # CICS does after.get("machine_type") which returns None — nested attribute miss.
+    {
+        "repo":    "terraform-google-modules__terraform-google-kubernetes-engine",
+        "example": "simple_regional",
+        "description": (
+            "google_container_node_pool: machine_type n1-standard-2 -> n1-standard-8 "
+            "nested inside node_config — CICS cannot reach nested attributes (C1 miss)"
+        ),
+        "ground_truth": {
+            "is_cost_impacting": True,
+            "direction":         "increase",
+            "category":          "Compute sizing",
+            "expected_rule_ids": ["C1"],
+        },
+        "resource_changes": [{
+            "address": "google_container_node_pool.primary_nodes",
+            "type":    "google_container_node_pool",
+            "change":  {
+                "actions": ["update"],
+                "before": {"node_config": [{"machine_type": "n1-standard-2", "disk_size_gb": 100}]},
+                "after":  {"node_config": [{"machine_type": "n1-standard-8", "disk_size_gb": 100}]},
+            },
+        }],
+    },
+    # FN-2: ElastiCache num_cache_nodes increase
+    # CICS scaling rules check min_size/min_capacity etc. — num_cache_nodes not covered.
+    {
+        "repo":    "terraform-aws-modules__terraform-aws-elasticache",
+        "example": "memcached",
+        "description": (
+            "aws_elasticache_cluster: num_cache_nodes 1 -> 4 — "
+            "field absent from CICS scaling rule field list (S1 miss)"
+        ),
+        "ground_truth": {
+            "is_cost_impacting": True,
+            "direction":         "increase",
+            "category":          "Scaling bounds",
+            "expected_rule_ids": ["S1"],
+        },
+        "resource_changes": [{
+            "address": "aws_elasticache_cluster.this",
+            "type":    "aws_elasticache_cluster",
+            "change":  {
+                "actions": ["update"],
+                "before": {"num_cache_nodes": 1, "node_type": "cache.t3.micro", "engine": "memcached"},
+                "after":  {"num_cache_nodes": 4, "node_type": "cache.t3.micro", "engine": "memcached"},
+            },
+        }],
+    },
+    # FP-1: ASG desired_capacity drift — S2 fires on a non-policy change.
+    # AWS Auto Scaling adjusts desired_capacity externally; terraform plan shows 2->3
+    # as drift. min/max (the actual policy) are unchanged. No cost-policy decision was made.
+    {
+        "repo":    "terraform-aws-modules__terraform-aws-autoscaling",
+        "example": "complete",
+        "description": (
+            "aws_autoscaling_group: desired_capacity drift 2 -> 3 with min/max unchanged — "
+            "S2 fires on autoscaling drift, not a deliberate scaling policy change (FP)"
+        ),
+        "ground_truth": {
+            "is_cost_impacting": False,
+            "direction":         None,
+            "category":          None,
+            "expected_rule_ids": [],
+        },
+        "resource_changes": [{
+            "address": "aws_autoscaling_group.this",
+            "type":    "aws_autoscaling_group",
+            "change":  {
+                "actions": ["update"],
+                "before": {"min_size": 2, "max_size": 10, "desired_capacity": 2},
+                "after":  {"min_size": 2, "max_size": 10, "desired_capacity": 3},
+            },
+        }],
+    },
+    # FP-2: RDS allocated_storage micro-increase — ST1 fires but delta is trivial.
+    # A 1 GB increase on an RDS instance adds ~$0.12/month — below any meaningful
+    # cost threshold. CICS lacks a minimum-delta guard on ST1.
+    {
+        "repo":    "terraform-aws-modules__terraform-aws-rds",
+        "example": "complete-postgres",
+        "description": (
+            "aws_db_instance: allocated_storage 20 -> 21 GB — "
+            "ST1 fires but 1 GB delta is below cost significance threshold (FP)"
+        ),
+        "ground_truth": {
+            "is_cost_impacting": False,
+            "direction":         None,
+            "category":          None,
+            "expected_rule_ids": [],
+        },
+        "resource_changes": [{
+            "address": "module.db.aws_db_instance.this[0]",
+            "type":    "aws_db_instance",
+            "change":  {
+                "actions": ["update"],
+                "before": {"allocated_storage": 20, "instance_class": "db.t4g.large", "engine": "postgres"},
+                "after":  {"allocated_storage": 21, "instance_class": "db.t4g.large", "engine": "postgres"},
+            },
+        }],
+    },
+]
+
+
+# ---------------------------------------------------------------------------
 # Dynamic scenario generation
 # ---------------------------------------------------------------------------
 
 def _generate_scenarios() -> list[dict]:
     base_dir = Path(__file__).parent / "plans" / "base"
+    scenarios, counter = [], 1
+
     if not base_dir.exists():
         print(
             "[scenarios.py] dataset/plans/base/ not found. "
-            "Run: python dataset/select_examples.py",
+            "Run: bash examples/gen_base_plans.sh",
             file=sys.stderr,
         )
-        return []
+    else:
+        for plan_path in sorted(base_dir.rglob("base.json")):
+            parts = plan_path.relative_to(base_dir).parts
+            if len(parts) < 3:
+                continue
+            repo, example = parts[0], parts[1]
 
-    scenarios, counter = [], 1
-
-    for plan_path in sorted(base_dir.rglob("base.json")):
-        parts = plan_path.relative_to(base_dir).parts
-        if len(parts) < 3:
-            continue
-        repo, example = parts[0], parts[1]
-
-        try:
-            plan = json.loads(plan_path.read_text())
-        except Exception:
-            continue
-
-        rcs = plan.get("resource_changes", [])
-        used_types: set[str] = set()
-
-        # ---- cost-impacting scenarios ------------------------------------
-        for rc in rcs:
-            rtype = rc.get("type", "")
-            if rtype in used_types or rtype not in CHANGE_TEMPLATES:
+            try:
+                plan = json.loads(plan_path.read_text())
+            except Exception:
                 continue
 
-            after_vals = (rc.get("change") or {}).get("after") or {}
+            rcs = plan.get("resource_changes", [])
+            used_types: set[str] = set()
 
-            for tmpl in CHANGE_TEMPLATES[rtype]:
-                action = tmpl.get("action", "update")
+            # ---- cost-impacting scenarios ------------------------------------
+            for rc in rcs:
+                rtype = rc.get("type", "")
+                if rtype in used_types or rtype not in CHANGE_TEMPLATES:
+                    continue
 
-                if action == "create":
-                    before, after, actions = None, after_vals, ["create"]
-                    desc = f"{rtype} created"
+                after_vals = (rc.get("change") or {}).get("after") or {}
 
-                elif action == "replace":
-                    before = after_vals
-                    after  = after_vals
-                    actions = ["delete", "create"]
-                    desc = f"{rtype} replaced"
+                for tmpl in CHANGE_TEMPLATES[rtype]:
+                    action = tmpl.get("action", "update")
 
-                else:  # update
-                    attr = tmpl["attribute"]
-                    cur  = after_vals.get(attr)
+                    if action == "create":
+                        before, after, actions = None, after_vals, ["create"]
+                        desc = f"{rtype} created"
 
-                    if "before_value" in tmpl:
-                        bval, aval = tmpl["before_value"], tmpl["after_value"]
-                    else:
-                        if cur is None:
-                            cur = _ATTR_DEFAULTS.get(attr)
-                        if cur is None:
-                            continue
-                        aval = tmpl["transform"](cur)
-                        if aval is None or aval == cur:
-                            continue
-                        bval = cur
+                    elif action == "replace":
+                        before = after_vals
+                        after  = after_vals
+                        actions = ["delete", "create"]
+                        desc = f"{rtype} replaced"
 
-                    before  = {**after_vals, attr: bval}
-                    after   = {**after_vals, attr: aval}
-                    actions = ["update"]
-                    desc    = f"{rtype}: {attr} {bval} -> {aval}"
+                    else:  # update
+                        attr = tmpl["attribute"]
+                        cur  = after_vals.get(attr)
 
+                        if "before_value" in tmpl:
+                            bval, aval = tmpl["before_value"], tmpl["after_value"]
+                        else:
+                            if cur is None:
+                                cur = _ATTR_DEFAULTS.get(attr)
+                            if cur is None:
+                                continue
+                            aval = tmpl["transform"](cur)
+                            if aval is None or aval == cur:
+                                continue
+                            bval = cur
+
+                        before  = {**after_vals, attr: bval}
+                        after   = {**after_vals, attr: aval}
+                        actions = ["update"]
+                        desc    = f"{rtype}: {attr} {bval} -> {aval}"
+
+                    scenarios.append({
+                        "id": f"S{counter:03d}",
+                        "repo": repo,
+                        "example": example,
+                        "description": desc,
+                        "ground_truth": {
+                            "is_cost_impacting": True,
+                            "direction":         tmpl["direction"],
+                            "category":          tmpl["category"],
+                            "expected_rule_ids": [tmpl["rule_id"]],
+                        },
+                        "resource_changes": [{
+                            "address": rc.get("address", f"{rtype}.this"),
+                            "type":    rtype,
+                            "change":  {"actions": actions, "before": before, "after": after},
+                        }],
+                    })
+                    counter += 1
+                    used_types.add(rtype)
+                    break  # one scenario per resource type per plan
+
+            # ---- false-positive scenario (one per plan) ----------------------
+            for rc in rcs:
+                rtype      = rc.get("type", "")
+                after_vals = (rc.get("change") or {}).get("after") or {}
+                if not after_vals or rtype in CHANGE_TEMPLATES:
+                    continue
                 scenarios.append({
                     "id": f"S{counter:03d}",
                     "repo": repo,
                     "example": example,
-                    "description": desc,
+                    "description": f"{rtype}: tags-only update — no cost impact",
                     "ground_truth": {
-                        "is_cost_impacting": True,
-                        "direction":         tmpl["direction"],
-                        "category":          tmpl["category"],
-                        "expected_rule_ids": [tmpl["rule_id"]],
+                        "is_cost_impacting": False,
+                        "direction":         None,
+                        "category":          None,
+                        "expected_rule_ids": [],
                     },
                     "resource_changes": [{
                         "address": rc.get("address", f"{rtype}.this"),
                         "type":    rtype,
-                        "change":  {"actions": actions, "before": before, "after": after},
+                        "change":  {
+                            "actions": ["update"],
+                            "before":  {**after_vals, "tags": {"env": "prod"}},
+                            "after":   {**after_vals, "tags": {"env": "staging"}},
+                        },
                     }],
                 })
                 counter += 1
-                used_types.add(rtype)
-                break  # one scenario per resource type per plan
+                break  # one FP per plan
 
-        # ---- false-positive scenario (one per plan) ----------------------
-        for rc in rcs:
-            rtype     = rc.get("type", "")
-            after_vals = (rc.get("change") or {}).get("after") or {}
-            if not after_vals or rtype in CHANGE_TEMPLATES:
-                continue
-            scenarios.append({
-                "id": f"S{counter:03d}",
-                "repo": repo,
-                "example": example,
-                "description": f"{rtype}: tags-only update — no cost impact",
-                "ground_truth": {
-                    "is_cost_impacting": False,
-                    "direction":         None,
-                    "category":          None,
-                    "expected_rule_ids": [],
-                },
-                "resource_changes": [{
-                    "address": rc.get("address", f"{rtype}.this"),
-                    "type":    rtype,
-                    "change":  {
-                        "actions": ["update"],
-                        "before":  {**after_vals, "tags": {"env": "prod"}},
-                        "after":   {**after_vals, "tags": {"env": "staging"}},
-                    },
-                }],
-            })
-            counter += 1
-            break  # one FP per plan
+    # Always append static edge-case scenarios (FN + FP boundary cases)
+    for ec in _EDGE_CASE_SCENARIOS:
+        scenarios.append({"id": f"S{counter:03d}", **ec})
+        counter += 1
 
-    if not scenarios:
-        print(
-            "[scenarios.py] No scenarios generated. "
-            "Run: python dataset/select_examples.py",
-            file=sys.stderr,
-        )
-    else:
-        cost    = sum(1 for s in scenarios if s["ground_truth"]["is_cost_impacting"])
-        noncost = len(scenarios) - cost
-        print(
-            f"[scenarios.py] {len(scenarios)} scenarios "
-            f"({cost} cost-impacting, {noncost} non-cost)."
-        )
+    cost    = sum(1 for s in scenarios if s["ground_truth"]["is_cost_impacting"])
+    noncost = len(scenarios) - cost
+    print(
+        f"[scenarios.py] {len(scenarios)} scenarios "
+        f"({cost} cost-impacting, {noncost} non-cost)."
+    )
 
     return scenarios
 

@@ -26,7 +26,7 @@ def step_build():
             "\n[!] dataset/plans/base/ is empty.\n"
             "    Run the following first:\n"
             "        bash examples/clone_repos.sh\n"
-            "        python dataset/select_examples.py\n"
+            "        bash examples/gen_base_plans.sh\n"
         )
         sys.exit(1)
     from dataset.build_plans import build_all
